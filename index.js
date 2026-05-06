@@ -1,0 +1,1 @@
+console.log("Hello, World! This is the Photo Album Manager.");
