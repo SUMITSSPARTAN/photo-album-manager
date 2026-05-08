@@ -10,7 +10,6 @@ export default function route(app: any) {
     });
 
     app.use(express.json());
-    //app.use(authMiddleware);
     app.use("/users", userRouter);
     app.use("/photos", authMiddleware, photoRouter);
     app.use("/albums", authMiddleware, albumRouter);
