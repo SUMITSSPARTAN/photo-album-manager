@@ -1,6 +1,6 @@
-import userRouter from '../user/controller.ts';
-import photoRouter from '../photo/controller.ts';
-import albumRouter from '../album/controller.ts';
+import userRouter from '../controller/user/controller.ts';
+import photoRouter from '../controller/photo/controller.ts';
+import albumRouter from '../controller/album/controller.ts';
 import express from 'express';
 import { authMiddleware } from './auth.ts';
 

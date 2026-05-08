@@ -1,6 +1,6 @@
 import express from "express";
-import { createUser, loginUser, updateUser, deleteUser } from "./service.ts";
-import { authMiddleware } from "../config/auth.ts";
+import { createUser, loginUser, updateUser, deleteUser } from "../../service/user/service.ts";
+import { authMiddleware } from "../../config/auth.ts";
 const router = express.Router();
 
 router.post("/", async (req, res) => {

@@ -1,7 +1,7 @@
-import db from "../config/prismaClient.ts";
+import db from "../../config/prismaClient.ts";
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { authMiddleware } from "../config/auth.ts";
+import { authMiddleware } from "../../config/auth.ts";
 
 export const createUser = async (name: string, email: string, password: string) => {
     try {
