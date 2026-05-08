@@ -1,5 +1,5 @@
 import express from "express";
-import { createUser, loginUser, updateUser, deleteUser } from "../../service/user/service.ts";
+import { createUser, loginUser, updateUser, deleteUser } from "../../service/user/index.ts";
 import { authMiddleware } from "../../config/auth.ts";
 const router = express.Router();
 
