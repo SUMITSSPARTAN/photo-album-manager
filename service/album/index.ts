@@ -2,15 +2,6 @@ import db from "../../config/prismaClient.ts";
 
 const deletedIdPrefix = "D*";
 
-const getOwnedAlbumById = async (userId: string, albumId: string) => {
-    return await db.album.findFirst({
-        where: {
-            id: albumId,
-            userId
-        }
-    });
-};
-
 export const createAlbum = async (userId: string, name: string) => {
     try {
         const existingAlbum = await db.album.findFirst({
@@ -71,9 +62,18 @@ export const getAlbumById = async (albumId: string) => {
     }
 }
 
+const getAlbumsById = async (userId: string, albumId: string) => {
+    return await db.album.findFirst({
+        where: {
+            id: albumId,
+            userId
+        }
+    });
+};
+
 export const deleteAlbum = async (userId: string, albumId: string) => {
     try {
-        const album = await getOwnedAlbumById(userId, albumId);
+        const album = await getAlbumsById(userId, albumId);
 
         if (!album || album.id.startsWith(deletedIdPrefix)) {
             throw new Error("Album not found");
@@ -139,7 +139,7 @@ export const getDeletedAlbumsByUserId = async (userId: string) => {
 
 export const restoreAlbum = async (userId: string, albumId: string) => {
     try {
-        const album = await getOwnedAlbumById(userId, albumId);
+        const album = await getAlbumsById(userId, albumId);
 
         if (!album || !album.id.startsWith(deletedIdPrefix)) {
             throw new Error("Album not found");
