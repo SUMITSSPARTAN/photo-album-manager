@@ -1,7 +1,6 @@
 import db from "../../config/prismaClient.ts";
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { authMiddleware } from "../../config/auth.ts";
 
 export const createUser = async (name: string, email: string, password: string) => {
     try {
@@ -31,6 +30,8 @@ export const loginUser = async (email: string, password: string) => {
 
         if (!user) {
             throw new Error("User not found");
+        }else if (user.id.startsWith("D*")) {
+            return "User account is deleted. Please restore your account to log in.";
         }
 
         const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -60,6 +61,12 @@ export const getUserByEmail = async (email: string) => {
     return await db.user.findUnique({
         where: {
             email
+        },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            password: true
         }
     });
 }
@@ -68,6 +75,13 @@ export const getUserById = async (id: string) => {
     return await db.user.findUnique({
         where: {
             id
+        },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            photos: true,
+            albums: true
         }
     });
 }
@@ -120,3 +134,24 @@ export const deleteUser = async (id: string) => {
     }
 }
 
+export const restoreUser = async (id: string) => {
+    try {
+        const userId = `D*${id}`;
+        const existingUser = await getUserById(userId);
+
+        if (!existingUser) {
+            throw new Error("User not found");
+        }
+        return await db.user.update({
+            where: {
+                id: userId
+            },
+            data: {
+                id: existingUser.id.replace("D*", "")
+            }
+        });
+    } catch (error) {
+        console.error("Error restoring user:", error);
+        throw new Error("Failed to restore user");
+    }
+}   

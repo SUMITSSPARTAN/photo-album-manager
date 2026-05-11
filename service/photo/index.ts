@@ -1,8 +1,6 @@
 import type { Prisma } from "../../generated/prisma/client.ts";
 import db from "../../config/prismaClient.ts";
-import { getUserById } from "../user/index.ts";
-import { getAlbumsByUserId } from "../album/index.ts";
-import { updateAlbum, deleteFile } from "./utils.ts";
+import { updateAlbum } from "./utils.ts";
 
 type CreatePhotoInput = {
   userId: string;
@@ -13,6 +11,8 @@ type CreatePhotoInput = {
   encoding: string;
   originalName: string;
 };
+
+const deletedIdPrefix = "D*";
 
 export const createPhoto = async ({
   userId,
@@ -70,10 +70,13 @@ export const createPhotos = async (photos: CreatePhotoInput[]) => {
   }
 };
 
-export const getPhotoById = async (photoId: string) => {
+export const getPhotoById = async (userId: string, photoId: string) => {
   try {
-    return await db.photo.findUnique({
-      where: { id: photoId },
+    return await db.photo.findFirst({
+      where: {
+        id: photoId,
+        userId,
+      },
     });
   } catch (error) {
     console.error("Error fetching photo:", error);
@@ -81,50 +84,113 @@ export const getPhotoById = async (photoId: string) => {
   }
 };
 
-export const deletePhoto = async (photoId: string) => {
+const getPhotosById = async (userId: string, photoId: string) => {
+  return await db.photo.findFirst({
+    where: {
+      id: photoId,
+      userId,
+    },
+  });
+};
+
+export const deletePhoto = async (userId: string, photoId: string) => {
   try {
-    const photo = await db.photo.delete({
+    const ownedPhoto = await getPhotosById(userId, photoId);
+
+    if (!ownedPhoto || ownedPhoto.id.startsWith(deletedIdPrefix)) {
+      throw new Error("Photo not found");
+    }
+
+    const deletedPhoto = await db.photo.update({
       where: { id: photoId },
+      data: { id: `${deletedIdPrefix}${photoId}` }
     });
 
-    await updateAlbum(photo.albumId!, -1);
-    await deleteFile(photo.path);
+    await updateAlbum(deletedPhoto.albumId!, -1);
 
-    return photo;
+    return deletedPhoto;
   } catch (error) {
     console.error("Error deleting photo:", error);
-    throw new Error("Failed to delete photo");
+    throw error instanceof Error ? error : new Error("Failed to delete photo");
   }
 };
 
-export const deletePhotos = async (photoIds: string[]) => {
+export const deletePhotos = async (userId: string, photoIds: string[]) => {
   try {
-    const results = await Promise.allSettled(photoIds.map((photoId) => deletePhoto(photoId)));
+    const photos = await db.photo.findMany({
+      where: {
+        userId,
+        id: {
+          in: photoIds,
+          not: {
+            startsWith: deletedIdPrefix,
+          },
+        },
+      },
+    });
 
-    const deletedPhotos = results
-      .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof deletePhoto>>> => result.status === "fulfilled")
-      .map((result) => result.value);
+    if (photos.length !== photoIds.length) {
+      throw new Error("One or more photos were not found");
+    }
 
-    const failures = results
-      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-      .map((result, index) => ({
-        photoId: photoIds[index],
-        error: result.reason instanceof Error ? result.reason.message : "Failed to delete photo",
-      }));
-
-    if (failures.length > 0) console.error("Failed to delete some photos:", failures);
-    
-    return deletedPhotos;
+    return await Promise.all(photos.map((photo) => deletePhoto(userId, photo.id)));
   } catch (error) {
     console.error("Error deleting photos:", error);
-    throw new Error("Failed to delete photos");
+    throw error instanceof Error ? error : new Error("Failed to delete photos");
   }
 };
 
-export const getPhotosByAlbumId = async (albumId: string) => {
+export const restorePhoto = async (userId: string, photoId: string) => {
+  try {
+    const ownedPhoto = await getPhotosById(userId, photoId);
+
+    if (!ownedPhoto || !ownedPhoto.id.startsWith(deletedIdPrefix)) {
+      throw new Error("Photo not found");
+    }
+
+    const restoredPhoto = await db.photo.update({
+      where: { id: photoId },
+      data: { id: ownedPhoto.id.replace(/^D\*/, "") }
+    });
+
+    await updateAlbum(restoredPhoto.albumId!, 1);
+    return restoredPhoto;
+  } catch (error) {
+    console.error("Error restoring photo:", error);
+    throw error instanceof Error ? error : new Error("Failed to restore photo");
+  }
+};
+
+export const restorePhotos = async (userId: string) => {
+  try {
+    const deletedPhotos = await db.photo.findMany({
+      where: {
+        userId,
+        id: { startsWith: deletedIdPrefix }
+      }
+    });
+
+    const restorePromises = deletedPhotos.map((photo) => restorePhoto(userId, photo.id));
+    return await Promise.all(restorePromises);
+  } catch (error) {
+    console.error("Error restoring photos:", error);
+    throw error instanceof Error ? error : new Error("Failed to restore photos");
+  }
+};
+
+export const getPhotosByAlbumId = async (userId: string, albumId: string) => {
   try {
     return await db.photo.findMany({
-      where: { albumId },
+      where: {
+        userId,
+        albumId,
+        NOT: {
+          id: {
+            startsWith: deletedIdPrefix
+          }
+        }
+      },
+      orderBy: { uploadedAt: "desc" }
     });
   } catch (error) {
     console.error("Error fetching photos:", error);
@@ -132,16 +198,45 @@ export const getPhotosByAlbumId = async (albumId: string) => {
   }
 };
 
-export const movePhotoToAnotherAlbum = async (photoId: string, albumId: string) => {
+export const getDeletedPhotosByUserId = async (userId: string) => {
   try {
-    const photo = await getPhotoById(photoId);
+    return await db.photo.findMany({
+      where: {
+        userId,
+        id: { startsWith: deletedIdPrefix }
+      },
+      orderBy: { uploadedAt: "desc" }
+    });
+  } catch (error) {
+    console.error("Error fetching deleted photos:", error);
+    throw new Error("Failed to fetch deleted photos");
+  }
+};
+
+export const movePhotoToAnotherAlbum = async (userId: string, photoId: string, albumId: string) => {
+  try {
+    const photo = await getPhotoById(userId, photoId);
     if (!photo) {
       throw new Error("Photo not found");
     }
 
-    const albums = await getAlbumsByUserId(photo.userId);
-    const albumExists = albums.some((album) => album.id === albumId);
-    if (!albumExists) {
+    const album = await db.album.findFirst({
+      where: {
+        userId,
+        AND: [
+          { id: albumId },
+          {
+            id: {
+              not: {
+                startsWith: deletedIdPrefix,
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    if (!album) {
       throw new Error("New album not found for the user");
     }
 
@@ -155,6 +250,6 @@ export const movePhotoToAnotherAlbum = async (photoId: string, albumId: string) 
 
   } catch (error) {
     console.error("Error moving photo:", error);
-    throw new Error("Failed to move photo");
+    throw error instanceof Error ? error : new Error("Failed to move photo");
   }
 };
