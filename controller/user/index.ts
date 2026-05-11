@@ -3,6 +3,9 @@ import { createUser, loginUser, updateUser, deleteUser } from "../../service/use
 import { authMiddleware } from "../../config/auth.ts";
 const router = express.Router();
 
+const getRouteParam = (value: string | string[] | undefined) =>
+  typeof value === "string" ? value : undefined;
+
 router.post("/", async (req, res) => {
   const { name, email, password } = req.body;
 
@@ -37,7 +40,14 @@ router.post("/login", async (req, res) => {
 
 router.put("/:id", authMiddleware, async (req, res) => {
   try {
-    await updateUser(req.params.id, req.body.name, req.body.email, req.body.password);
+    const userId = getRouteParam(req.params.id);
+
+    if (!userId) {
+      res.status(400).send("Invalid user id");
+      return;
+    }
+
+    await updateUser(userId, req.body.name, req.body.email, req.body.password);
     res.send("User updated successfully");
   } catch (error) {
     let errorMessage = "Failed to update user";
@@ -50,7 +60,14 @@ router.put("/:id", authMiddleware, async (req, res) => {
 
 router.delete("/:id", authMiddleware, async (req, res) => {
   try {
-    await deleteUser(req.params.id);
+    const userId = getRouteParam(req.params.id);
+
+    if (!userId) {
+      res.status(400).send("Invalid user id");
+      return;
+    }
+
+    await deleteUser(userId);
     res.send("User deleted successfully");
   } catch (error) {
     let errorMessage = "Failed to delete user";
