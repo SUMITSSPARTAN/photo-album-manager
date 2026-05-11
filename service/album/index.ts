@@ -62,33 +62,6 @@ export const getAlbumById = async (albumId: string) => {
     }
 }
 
-const getAlbumsById = async (userId: string, albumId: string) => {
-    return await db.album.findFirst({
-        where: {
-            id: albumId,
-            userId
-        }
-    });
-};
-
-export const deleteAlbum = async (userId: string, albumId: string) => {
-    try {
-        const album = await getAlbumsById(userId, albumId);
-
-        if (!album || album.id.startsWith(deletedIdPrefix)) {
-            throw new Error("Album not found");
-        }
-
-        return await db.album.update({
-            where: { id: albumId },
-            data: { id: `${deletedIdPrefix}${albumId}` }
-        });
-    } catch (error) {
-        console.error("Error deleting album:", error);
-        throw error instanceof Error ? error : new Error("Failed to delete album");
-    }
-}
-
 export const deleteAlbums = async (userId: string, albumIds: string[]) => {
     try {
         const albums = await db.album.findMany({
@@ -137,37 +110,23 @@ export const getDeletedAlbumsByUserId = async (userId: string) => {
     }
 }
 
-export const restoreAlbum = async (userId: string, albumId: string) => {
-    try {
-        const album = await getAlbumsById(userId, albumId);
-
-        if (!album || !album.id.startsWith(deletedIdPrefix)) {
-            throw new Error("Album not found");
-        }
-
-        return await db.album.update({
-            where: { id: albumId },
-            data: { id: album.id.replace(/^D\*/, "") }
-        });
-    } catch (error) {
-        console.error("Error restoring album:", error);
-        throw error instanceof Error ? error : new Error("Failed to restore album");
-    }
-}
-
-export const restoreSelectedAlbums = async (userId: string, albumIds: string[]) => {
+export const restoreAlbums = async (userId: string, albumIds?: string[]) => {
     try {
         const albums = await db.album.findMany({
             where: {
                 userId,
-                id: {
-                    in: albumIds,
-                    startsWith: deletedIdPrefix
-                }
+                id: albumIds && albumIds.length > 0
+                    ? {
+                        in: albumIds,
+                        startsWith: deletedIdPrefix
+                    }
+                    : {
+                        startsWith: deletedIdPrefix
+                    }
             }
         });
 
-        if (albums.length !== albumIds.length) {
+        if (albumIds && albumIds.length > 0 && albums.length !== albumIds.length) {
             throw new Error("One or more albums were not found");
         }
 

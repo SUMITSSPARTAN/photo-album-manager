@@ -1,6 +1,7 @@
-import type { Prisma } from "../../generated/prisma/client.ts";
 import db from "../../config/prismaClient.ts";
-import { updateAlbum } from "./utils.ts";
+import type { Prisma } from "../../generated/prisma/client.ts";
+
+const deletedAlbumIdPrefix = "D*";
 
 type CreatePhotoInput = {
   userId: string;
@@ -12,106 +13,67 @@ type CreatePhotoInput = {
   originalName: string;
 };
 
-const deletedIdPrefix = "D*";
+type PhotoQueryParams = {
+  photoId?: string;
+  albumId?: string;
+  includeDeleted?: boolean;
+  onlyDeleted?: boolean;
+};
 
-export const createPhoto = async ({
-  userId,
-  albumId,
-  path,
-  type,
-  size,
-  encoding,
-  originalName,
-}: CreatePhotoInput) => {
-  try {
-    const album = await db.album.findFirst({
-      where: {
-        id: albumId,
-        userId,
-      },
-    });
-    if (!album) throw new Error("Album not found for the user");
-
-    const metadata: Prisma.InputJsonValue = {
-      originalName,
-      encoding,
-    };
-
-    const photo = await db.photo.create({
-      data: {
-        userId,
-        albumId,
-        path,
-        type,
-        size,
-        metadata,
-      },
-    });
-
-    await updateAlbum(albumId, 1);
-    return photo;
-  } catch (error) {
-    console.error("Error creating photo:", error);
-    throw error instanceof Error ? error : new Error("Failed to create photo");
+const updateAlbumContentSize = async (albumId: string, sizeDelta: number) => {
+  if (sizeDelta === 0) {
+    return;
   }
+
+  await db.album.update({
+    where: { id: albumId },
+    data: {
+      contentSize:
+        sizeDelta > 0
+          ? { increment: sizeDelta }
+          : { decrement: Math.abs(sizeDelta) },
+    },
+  });
 };
 
 export const createPhotos = async (photos: CreatePhotoInput[]) => {
   try {
     const createdPhotos = [];
     for (const photoData of photos) {
-      const createdPhoto = await createPhoto(photoData);
+      const album = await db.album.findFirst({
+        where: {
+          id: photoData.albumId,
+          userId: photoData.userId,
+        },
+      });
+
+      if (!album) {
+        throw new Error("Album not found for the user");
+      }
+
+      const metadata: Prisma.InputJsonValue = {
+        originalName: photoData.originalName,
+        encoding: photoData.encoding,
+      };
+
+      const createdPhoto = await db.photo.create({
+        data: {
+          userId: photoData.userId,
+          albumId: photoData.albumId,
+          path: photoData.path,
+          type: photoData.type,
+          size: photoData.size,
+          metadata,
+        },
+      });
+
+      await updateAlbumContentSize(photoData.albumId, 1);
       createdPhotos.push(createdPhoto);
     }
     return createdPhotos;
   } catch (error) {
     console.error("Error creating photos:", error);
     throw error instanceof Error ? error : new Error("Failed to create photos");
-  }
-};
-
-export const getPhotoById = async (userId: string, photoId: string) => {
-  try {
-    return await db.photo.findFirst({
-      where: {
-        id: photoId,
-        userId,
-      },
-    });
-  } catch (error) {
-    console.error("Error fetching photo:", error);
-    throw new Error("Failed to fetch photo");
-  }
-};
-
-const getPhotosById = async (userId: string, photoId: string) => {
-  return await db.photo.findFirst({
-    where: {
-      id: photoId,
-      userId,
-    },
-  });
-};
-
-export const deletePhoto = async (userId: string, photoId: string) => {
-  try {
-    const ownedPhoto = await getPhotosById(userId, photoId);
-
-    if (!ownedPhoto || ownedPhoto.id.startsWith(deletedIdPrefix)) {
-      throw new Error("Photo not found");
-    }
-
-    const deletedPhoto = await db.photo.update({
-      where: { id: photoId },
-      data: { id: `${deletedIdPrefix}${photoId}` }
-    });
-
-    await updateAlbum(deletedPhoto.albumId!, -1);
-
-    return deletedPhoto;
-  } catch (error) {
-    console.error("Error deleting photo:", error);
-    throw error instanceof Error ? error : new Error("Failed to delete photo");
   }
 };
 
@@ -122,10 +84,8 @@ export const deletePhotos = async (userId: string, photoIds: string[]) => {
         userId,
         id: {
           in: photoIds,
-          not: {
-            startsWith: deletedIdPrefix,
-          },
         },
+        deletedAt: null,
       },
     });
 
@@ -133,65 +93,107 @@ export const deletePhotos = async (userId: string, photoIds: string[]) => {
       throw new Error("One or more photos were not found");
     }
 
-    return await Promise.all(photos.map((photo) => deletePhoto(userId, photo.id)));
+    const deletedPhotos = [];
+    for (const photo of photos) {
+      const deletedPhoto = await db.photo.update({
+        where: { id: photo.id },
+        data: { deletedAt: new Date() }
+      });
+
+      await updateAlbumContentSize(deletedPhoto.albumId!, -1);
+      deletedPhotos.push(deletedPhoto);
+    }
+
+    return deletedPhotos;
   } catch (error) {
     console.error("Error deleting photos:", error);
     throw error instanceof Error ? error : new Error("Failed to delete photos");
   }
 };
 
-export const restorePhoto = async (userId: string, photoId: string) => {
+export const restorePhotos = async (userId: string, photoIds?: string[]) => {
   try {
-    const ownedPhoto = await getPhotosById(userId, photoId);
+    const where: Prisma.PhotoWhereInput = {
+      userId,
+      deletedAt: {
+        not: null,
+      },
+    };
 
-    if (!ownedPhoto || !ownedPhoto.id.startsWith(deletedIdPrefix)) {
-      throw new Error("Photo not found");
+    if (photoIds && photoIds.length > 0) {
+      where.id = {
+        in: photoIds,
+      };
     }
 
-    const restoredPhoto = await db.photo.update({
-      where: { id: photoId },
-      data: { id: ownedPhoto.id.replace(/^D\*/, "") }
-    });
-
-    await updateAlbum(restoredPhoto.albumId!, 1);
-    return restoredPhoto;
-  } catch (error) {
-    console.error("Error restoring photo:", error);
-    throw error instanceof Error ? error : new Error("Failed to restore photo");
-  }
-};
-
-export const restorePhotos = async (userId: string) => {
-  try {
     const deletedPhotos = await db.photo.findMany({
-      where: {
-        userId,
-        id: { startsWith: deletedIdPrefix }
-      }
+      where,
     });
 
-    const restorePromises = deletedPhotos.map((photo) => restorePhoto(userId, photo.id));
-    return await Promise.all(restorePromises);
+    if (photoIds && photoIds.length > 0 && deletedPhotos.length !== photoIds.length) {
+      throw new Error("One or more photos were not found");
+    }
+
+    const restoredPhotos = [];
+    for (const photo of deletedPhotos) {
+      const restoredPhoto = await db.photo.update({
+        where: { id: photo.id },
+        data: { deletedAt: null }
+      });
+
+      await updateAlbumContentSize(restoredPhoto.albumId!, 1);
+      restoredPhotos.push(restoredPhoto);
+    }
+
+    return restoredPhotos;
   } catch (error) {
     console.error("Error restoring photos:", error);
     throw error instanceof Error ? error : new Error("Failed to restore photos");
   }
 };
 
+export const getPhotoById = async (userId: string, photoId: string) => {
+  try {
+    const photos = await getPhotos(userId, { photoId });
+    return photos[0] ?? null;
+  } catch (error) {
+    console.error("Error fetching photo:", error);
+    throw new Error("Failed to fetch photo");
+  }
+};
+
+const getPhotos = async (userId: string, params: PhotoQueryParams) => {
+  const { photoId, albumId, includeDeleted = false, onlyDeleted = false } = params;
+
+  const where: Prisma.PhotoWhereInput = {
+    userId,
+  };
+
+  if (photoId) {
+    where.id = photoId;
+  }
+
+  if (albumId) {
+    where.albumId = albumId;
+  }
+
+  if (onlyDeleted) {
+    where.deletedAt = {
+      not: null,
+    };
+  } else if (!includeDeleted) {
+    where.deletedAt = null;
+  }
+
+  return await db.photo.findMany({
+    where,
+    orderBy: { uploadedAt: "desc" },
+  });
+};
+
 export const getPhotosByAlbumId = async (userId: string, albumId: string) => {
   try {
-    return await db.photo.findMany({
-      where: {
-        userId,
-        albumId,
-        NOT: {
-          id: {
-            startsWith: deletedIdPrefix
-          }
-        }
-      },
-      orderBy: { uploadedAt: "desc" }
-    });
+    return await getPhotos(userId, { albumId });
   } catch (error) {
     console.error("Error fetching photos:", error);
     throw new Error("Failed to fetch photos");
@@ -200,13 +202,7 @@ export const getPhotosByAlbumId = async (userId: string, albumId: string) => {
 
 export const getDeletedPhotosByUserId = async (userId: string) => {
   try {
-    return await db.photo.findMany({
-      where: {
-        userId,
-        id: { startsWith: deletedIdPrefix }
-      },
-      orderBy: { uploadedAt: "desc" }
-    });
+    return await getPhotos(userId, { onlyDeleted: true });
   } catch (error) {
     console.error("Error fetching deleted photos:", error);
     throw new Error("Failed to fetch deleted photos");
@@ -228,7 +224,7 @@ export const movePhotoToAnotherAlbum = async (userId: string, photoId: string, a
           {
             id: {
               not: {
-                startsWith: deletedIdPrefix,
+                startsWith: deletedAlbumIdPrefix,
               },
             },
           },
@@ -240,8 +236,12 @@ export const movePhotoToAnotherAlbum = async (userId: string, photoId: string, a
       throw new Error("New album not found for the user");
     }
 
-    await updateAlbum(photo.albumId!, -1);
-    await updateAlbum(albumId, 1);
+    if (photo.deletedAt) {
+      throw new Error("Photo not found");
+    }
+
+    await updateAlbumContentSize(photo.albumId!, -1);
+    await updateAlbumContentSize(albumId, 1);
 
     return await db.photo.update({
       where: { id: photoId },

@@ -1,49 +1,11 @@
 import express from "express";
-import { createPhoto, createPhotos, getPhotoById, deletePhoto, deletePhotos, movePhotoToAnotherAlbum, restorePhoto, restorePhotos, getPhotosByAlbumId, getDeletedPhotosByUserId } from "../../service/photo/index.ts";
+import { createPhotos, getPhotoById, deletePhotos, movePhotoToAnotherAlbum, restorePhotos, getPhotosByAlbumId, getDeletedPhotosByUserId } from "../../service/photo/index.ts";
 import { upload } from "./util.ts";
 import { getAuthenticatedUserId, getErrorMessage } from "../utils.ts";
 
 const router = express.Router();
 
-router.post("/", upload.single("photo"), async (req, res) => {
-    try {
-        const { albumId } = req.body;
-        const userId = getAuthenticatedUserId(req);
-
-        if (!userId) {
-            res.status(401).send("Invalid authorization token");
-            return;
-        }
-
-        if (!albumId) {
-            res.status(400).send("Missing required field: albumId");
-            return;
-        }
-
-        if (!req.file) {
-            res.status(400).send("Photo file is required");
-            return;
-        }
-
-        console.log("Received file:", req.file);
-
-        const payload = await createPhoto({
-            userId,
-            albumId,
-            path: req.file.path,
-            type: req.file.mimetype,
-            size: req.file.size,
-            encoding: req.file.encoding,
-            originalName: req.file.originalname,
-        });
-
-        res.status(201).json(payload);
-    } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to create photo"));
-    }
-});
-
-router.post("/batch", upload.array("photos"), async (req, res) => {
+router.post("/", upload.array("photos"), async (req, res) => {
     try {
         const { albumId } = req.body;
         const userId = getAuthenticatedUserId(req);
@@ -73,8 +35,8 @@ router.post("/batch", upload.array("photos"), async (req, res) => {
             originalName: file.originalname,
         }));
 
-        const createdPhotos = await createPhotos(photosData);
-        res.status(201).json(createdPhotos);
+        const payload = await createPhotos(photosData);
+        res.status(201).json(payload);
     } catch (error) {
         res.status(400).send(getErrorMessage(error, "Failed to create photos"));
     }
@@ -155,51 +117,25 @@ router.delete("/", async (req, res) => {
     }
 });
 
-router.delete("/:id", async (req, res) => {
-    try {
-        const userId = getAuthenticatedUserId(req);
-
-        if (!userId) {
-            res.status(401).send("Invalid authorization token");
-            return;
-        }
-
-        await deletePhoto(userId, req.params.id);
-        res.status(204).send();
-    } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to delete photo"));
-    }
-});
-
 router.patch("/restore", async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
+        const { photoIds } = req.body;
 
         if (!userId) {
             res.status(401).send("Invalid authorization token");
             return;
         }
 
-        const restoredPhotos = await restorePhotos(userId);
+        if (photoIds !== undefined && (!Array.isArray(photoIds) || photoIds.length === 0)) {
+            res.status(400).send("photoIds must be a non-empty array when provided");
+            return;
+        }
+
+        const restoredPhotos = await restorePhotos(userId, photoIds);
         res.json(restoredPhotos);
     } catch (error) {
         res.status(400).send(getErrorMessage(error, "Failed to restore photos"));
-    }
-});
-
-router.patch("/:id/restore", async (req, res) => {
-    try {
-        const userId = getAuthenticatedUserId(req);
-
-        if (!userId) {
-            res.status(401).send("Invalid authorization token");
-            return;
-        }
-
-        const restoredPhoto = await restorePhoto(userId, req.params.id);
-        res.json(restoredPhoto);
-    } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to restore photo"));
     }
 });
 

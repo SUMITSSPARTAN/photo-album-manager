@@ -24,6 +24,7 @@ model Photo {
   size        Int
   metadata    Json?
   uploadedAt  DateTime @default(now())
+  deletedAt   DateTime?
   userId      String
   user        User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   albumId     String?

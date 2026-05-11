@@ -1,5 +1,5 @@
 import express from "express";
-import { createAlbum, getAlbumsByUserId, deleteAlbum, deleteAlbums, getDeletedAlbumsByUserId, restoreAlbum, restoreSelectedAlbums } from "../../service/album/index.ts";
+import { createAlbum, getAlbumsByUserId, deleteAlbums, getDeletedAlbumsByUserId, restoreAlbums } from "../../service/album/index.ts";
 import { getAuthenticatedUserId, getErrorMessage } from "../utils.ts";
 const router = express.Router();
 
@@ -82,54 +82,14 @@ router.patch("/restore", async (req, res) => {
             return res.status(401).send("Invalid authorization token");
         }
 
-        if (!albumIds || !Array.isArray(albumIds) || albumIds.length === 0) {
-            return res.status(400).send("Missing or invalid required field: albumIds");
+        if (albumIds !== undefined && (!Array.isArray(albumIds) || albumIds.length === 0)) {
+            return res.status(400).send("albumIds must be a non-empty array when provided");
         }
 
-        const payload = await restoreSelectedAlbums(userId, albumIds);
+        const payload = await restoreAlbums(userId, albumIds);
         res.status(200).json(payload);
     } catch (error) {
         res.status(400).send(getErrorMessage(error, "Failed to restore albums"));
-    }
-});
-
-router.delete("/:albumId", async (req, res) => {
-    try {
-        const userId = getAuthenticatedUserId(req);
-        const { albumId } = req.params;
-
-        if (!userId) {
-            return res.status(401).send("Invalid authorization token");
-        }
-
-        if (!albumId) {
-            return res.status(400).send("Missing required field: albumId");
-        }
-
-        const payload = await deleteAlbum(userId, albumId);
-        res.status(200).json(payload);
-    } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to delete album"));
-    }
-});
-
-router.patch("/:albumId/restore", async (req, res) => {
-    try {
-        const userId = getAuthenticatedUserId(req);
-        const { albumId } = req.params;
-
-        if (!userId) {
-            return res.status(401).send("Invalid authorization token");
-        }
-
-        if (!albumId) {
-            return res.status(400).send("Missing required field: albumId");
-        }
-
-        const payload = await restoreAlbum(userId, albumId);
-        res.status(200).json(payload);
-    } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to restore album"));
     }
 });
 
