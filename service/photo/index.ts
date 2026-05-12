@@ -1,8 +1,6 @@
 import db from "../../config/prismaClient.ts";
 import type { Prisma } from "../../generated/prisma/client.ts";
 
-const deletedAlbumIdPrefix = "D*";
-
 type CreatePhotoInput = {
   userId: string;
   albumId: string;
@@ -44,6 +42,7 @@ export const createPhotos = async (photos: CreatePhotoInput[]) => {
         where: {
           id: photoData.albumId,
           userId: photoData.userId,
+          deletedAt: null,
         },
       });
 
@@ -218,17 +217,9 @@ export const movePhotoToAnotherAlbum = async (userId: string, photoId: string, a
 
     const album = await db.album.findFirst({
       where: {
+        id: albumId,
         userId,
-        AND: [
-          { id: albumId },
-          {
-            id: {
-              not: {
-                startsWith: deletedAlbumIdPrefix,
-              },
-            },
-          },
-        ],
+        deletedAt: null,
       },
     });
 

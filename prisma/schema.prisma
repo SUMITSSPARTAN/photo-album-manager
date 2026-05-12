@@ -36,6 +36,7 @@ model Album {
   name         String   @unique
   contentSize  Int      @default(0)
   createdAt    DateTime @default(now())
+  deletedAt    DateTime?
   userId       String
   user         User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   photos       Photo[]

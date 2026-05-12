@@ -1,6 +1,5 @@
 import db from "../../config/prismaClient.ts";
-
-const deletedIdPrefix = "D*";
+import type { Prisma } from "../../generated/prisma/client.ts";
 
 export const createAlbum = async (userId: string, name: string) => {
     try {
@@ -8,11 +7,7 @@ export const createAlbum = async (userId: string, name: string) => {
             where: {
                 userId,
                 name,
-                id: {
-                    not: {
-                        startsWith: deletedIdPrefix
-                    }
-                }
+                deletedAt: null,
             }
         });
 
@@ -38,11 +33,7 @@ export const getAlbumsByUserId = async (userId: string) => {
         return await db.album.findMany({
             where: {
                 userId,
-                id: {
-                    not: {
-                        startsWith: deletedIdPrefix
-                    }
-                }
+                deletedAt: null,
             }
         });
     } catch (error) {
@@ -69,10 +60,8 @@ export const deleteAlbums = async (userId: string, albumIds: string[]) => {
                 userId,
                 id: {
                     in: albumIds,
-                    not: {
-                        startsWith: deletedIdPrefix
-                    }
-                }
+                },
+                deletedAt: null,
             }
         });
 
@@ -84,7 +73,7 @@ export const deleteAlbums = async (userId: string, albumIds: string[]) => {
             albums.map((album) =>
                 db.album.update({
                     where: { id: album.id },
-                    data: { id: `${deletedIdPrefix}${album.id}` }
+                    data: { deletedAt: new Date() }
                 })
             )
         );
@@ -99,9 +88,9 @@ export const getDeletedAlbumsByUserId = async (userId: string) => {
         return await db.album.findMany({
             where: {
                 userId,
-                id: {
-                    startsWith: deletedIdPrefix
-                }
+                deletedAt: {
+                    not: null,
+                },
             }
         });
     } catch (error) {
@@ -112,18 +101,21 @@ export const getDeletedAlbumsByUserId = async (userId: string) => {
 
 export const restoreAlbums = async (userId: string, albumIds?: string[]) => {
     try {
-        const albums = await db.album.findMany({
-            where: {
-                userId,
-                id: albumIds && albumIds.length > 0
-                    ? {
-                        in: albumIds,
-                        startsWith: deletedIdPrefix
-                    }
-                    : {
-                        startsWith: deletedIdPrefix
-                    }
+        const where: Prisma.AlbumWhereInput = {
+            userId,
+            deletedAt: {
+                not: null,
             }
+        };
+
+        if (albumIds && albumIds.length > 0) {
+            where.id = {
+                in: albumIds,
+            };
+        }
+
+        const albums = await db.album.findMany({
+            where
         });
 
         if (albumIds && albumIds.length > 0 && albums.length !== albumIds.length) {
@@ -137,7 +129,7 @@ export const restoreAlbums = async (userId: string, albumIds?: string[]) => {
                         id: album.id
                     },
                     data: {
-                        id: album.id.replace(/^D\*/, "")
+                        deletedAt: null,
                     }
                 })
             )
