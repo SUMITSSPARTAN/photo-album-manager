@@ -1,0 +1,9 @@
+ALTER TABLE "User" ADD COLUMN "deletedAt" TIMESTAMP(3);
+
+UPDATE "User"
+SET "deletedAt" = CURRENT_TIMESTAMP
+WHERE "id" LIKE 'D*%';
+
+UPDATE "User"
+SET "id" = SUBSTRING("id" FROM 3)
+WHERE "id" LIKE 'D*%';

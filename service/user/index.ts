@@ -30,7 +30,7 @@ export const loginUser = async (email: string, password: string) => {
 
         if (!user) {
             throw new Error("User not found");
-        }else if (user.id.startsWith("D*")) {
+        }else if (user.deletedAt !== null) {
             return "User account is deleted. Please restore your account to log in.";
         }
 
@@ -66,7 +66,8 @@ export const getUserByEmail = async (email: string) => {
             id: true,
             name: true,
             email: true,
-            password: true
+            password: true,
+            deletedAt: true
         }
     });
 }
@@ -88,44 +89,31 @@ export const getUserById = async (id: string) => {
 
 export const updateUser = async (id: string, name?: string, email?: string, password?: string) => {
     try {
-        const existingUser = await getUserById(id);
+        const data: { name?: string; email?: string; password?: string } = {};
 
-        if (!existingUser) {
-            throw new Error("User not found");
-        }
-        name = name || existingUser.name;
-        email = email || existingUser.email;
-        password = password ? await bcrypt.hash(password, 10) : undefined;
+        if (name !== undefined) data.name = name;
+        if (email !== undefined) data.email = email;
+        if (password !== undefined) data.password = await bcrypt.hash(password, 10);
+
         return await db.user.update({
-            where: {
-                id
-            },
-            data: {
-                name: name!,
-                email: email!,
-                password: password!
-            }
+            where: { id },
+            data,
         });
     } catch (error) {
         console.error("Error updating user:", error);
         throw new Error("Failed to update user");
     }
-}
+};
+
 
 export const deleteUser = async (id: string) => {
     try {
-        const existingUser = await getUserById(id);
-
-        if (!existingUser) {
-            throw new Error("User not found");
-        }
-        console.log("Deleting user:", existingUser.name);
         return await db.user.update({
             where: {
                 id
             },
             data: {
-                id: `D*${id}`
+                deletedAt: new Date(),
             }
         });
     } catch (error) {
@@ -136,18 +124,12 @@ export const deleteUser = async (id: string) => {
 
 export const restoreUser = async (id: string) => {
     try {
-        const userId = `D*${id}`;
-        const existingUser = await getUserById(userId);
-
-        if (!existingUser) {
-            throw new Error("User not found");
-        }
         return await db.user.update({
             where: {
-                id: userId
+                id: id
             },
             data: {
-                id: existingUser.id.replace("D*", "")
+                deletedAt: null,
             }
         });
     } catch (error) {
