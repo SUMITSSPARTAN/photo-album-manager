@@ -1,9 +1,15 @@
 import express from "express";
 import { createUser, loginUser, updateUser, deleteUser, getUserById, restoreUser } from "../../service/user/index.ts";
-import { authMiddleware } from "../../config/auth.ts";
+import { authMiddleware, generateTokensFromRefreshToken } from "../../config/auth.ts";
 import { getAuthenticatedUserId, getErrorMessage, validate } from "../utils.ts";
 import { userSchema, loginSchema, updateUserSchema } from "./userSchema.ts";
 const router = express.Router();
+const refreshTokenCookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict" as const,
+  maxAge: 24 * 60 * 60 * 1000,
+};
 
 router.post("/", validate(userSchema), async (req, res) => {
   const { name, email, password } = req.body;
@@ -23,9 +29,29 @@ router.post("/login", validate(loginSchema), async (req, res) => {
   const { email, password } = req.body;
   try {
     const user = await loginUser(email, password);
-    res.send(`User logged in successfully. Token: ${user}`);
+    res.cookie("refreshToken", user.refreshToken, refreshTokenCookieOptions);
+    res.json({ accessToken: user.accessToken });
   } catch (error) {
     res.status(400).send(getErrorMessage(error, "Failed to log in user"));
+  }
+});
+
+router.post("/refresh-token", (req, res) => {
+  const refreshToken = req.cookies?.refreshToken;
+
+  if (!refreshToken) {
+    res.status(401).send("Refresh token is missing");
+    return;
+  }
+
+  try {
+    const tokens = generateTokensFromRefreshToken(refreshToken);
+
+    res.cookie("refreshToken", tokens.refreshToken, refreshTokenCookieOptions);
+
+    res.json({ accessToken: tokens.accessToken });
+  } catch {
+    res.status(401).send("Invalid refresh token");
   }
 });
 

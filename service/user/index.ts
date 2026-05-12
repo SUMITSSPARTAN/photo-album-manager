@@ -30,8 +30,8 @@ export const loginUser = async (email: string, password: string) => {
 
         if (!user) {
             throw new Error("User not found");
-        }else if (user.deletedAt !== null) {
-            return "User account is deleted. Please restore your account to log in.";
+        } else if (user.deletedAt !== null) {
+            throw new Error("User account is deleted. Please restore your account to log in.");
         }
 
         const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -40,17 +40,21 @@ export const loginUser = async (email: string, password: string) => {
             throw new Error("Invalid password");
         }
 
-        const token = jwt.sign(
+        const accessToken = jwt.sign(
             {
-                userId: user.id
+                userId: user.id,
+                email: user.email
             },
-            process.env.JWT_SECRET!,
-            {
-                expiresIn: '7d'
-            }
+            process.env.ACCESS_TOKEN_SECRET!, { expiresIn: '10m' }
         );
 
-        return token;
+        const refreshToken = jwt.sign(
+            {
+                userId: user.id,
+                email: user.email
+            }, process.env.REFRESH_TOKEN_SECRET!, { expiresIn: '1d' });
+            
+        return { accessToken, refreshToken };
     } catch (error) {
         console.error("Error logging in user:", error);
         throw new Error("Failed to log in user");

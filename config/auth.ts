@@ -22,7 +22,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
     }
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET!) as AuthTokenPayload;
+        const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET!) as AuthTokenPayload;
 
         req.user = decoded;
 
@@ -30,4 +30,35 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
     } catch {
         res.status(401).send("Invalid token");
     }
+}
+
+type RefreshTokenPayload = {
+    userId: string;
+    email: string;
+    iat?: number;
+    exp?: number;
+};
+
+export function generateTokensFromRefreshToken(refreshToken: string) {
+    const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET!) as RefreshTokenPayload;
+
+    const accessToken = jwt.sign(
+        {
+            userId: decoded.userId,
+            email: decoded.email
+        },
+        process.env.ACCESS_TOKEN_SECRET!,
+        { expiresIn: '10m' }
+    );
+
+    const newRefreshToken = jwt.sign(
+        {
+            userId: decoded.userId,
+            email: decoded.email
+        },
+        process.env.REFRESH_TOKEN_SECRET!,
+        { expiresIn: '1d' }
+    );
+
+    return { accessToken, refreshToken: newRefreshToken };
 }
