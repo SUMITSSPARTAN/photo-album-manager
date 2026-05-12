@@ -1,19 +1,16 @@
 import express from "express";
 import { createAlbum, getAlbumsByUserId, deleteAlbums, getDeletedAlbumsByUserId, restoreAlbums } from "../../service/album/index.ts";
-import { getAuthenticatedUserId, getErrorMessage } from "../utils.ts";
+import { getAuthenticatedUserId, getErrorMessage, validate } from "../utils.ts";
+import { createAlbumSchema, deleteAlbumsBodySchema, restoreAlbumsBodySchema } from "./albumSchema.ts";
 const router = express.Router();
 
-router.post("/", async (req, res) => {
+router.post("/", validate(createAlbumSchema), async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
         const { albumName } = req.body;
 
         if (!userId) {
             return res.status(401).send("Invalid authorization token");
-        }
-
-        if (!albumName) {
-            return res.status(400).send("Missing required field: albumName");
         }
 
         const payload = await createAlbum(userId, albumName);
@@ -53,17 +50,13 @@ router.get("/deleted", async (req, res) => {
     }
 });
 
-router.delete("/", async (req, res) => {
+router.delete("/", validate(deleteAlbumsBodySchema), async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
         const { albumIds } = req.body;
 
         if (!userId) {
             return res.status(401).send("Invalid authorization token");
-        }
-
-        if (!albumIds || !Array.isArray(albumIds) || albumIds.length === 0) {
-            return res.status(400).send("Missing or invalid required field: albumIds");
         }
 
         const payload = await deleteAlbums(userId, albumIds);
@@ -73,17 +66,13 @@ router.delete("/", async (req, res) => {
     }
 });
 
-router.patch("/restore", async (req, res) => {
+router.patch("/restore", validate(restoreAlbumsBodySchema), async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
         const { albumIds } = req.body;
 
         if (!userId) {
             return res.status(401).send("Invalid authorization token");
-        }
-
-        if (albumIds !== undefined && (!Array.isArray(albumIds) || albumIds.length === 0)) {
-            return res.status(400).send("albumIds must be a non-empty array when provided");
         }
 
         const payload = await restoreAlbums(userId, albumIds);

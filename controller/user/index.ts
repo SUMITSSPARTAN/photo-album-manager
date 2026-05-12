@@ -1,10 +1,11 @@
 import express from "express";
 import { createUser, loginUser, updateUser, deleteUser, getUserById, restoreUser } from "../../service/user/index.ts";
 import { authMiddleware } from "../../config/auth.ts";
-import { getAuthenticatedUserId, getErrorMessage } from "../utils.ts";
+import { getAuthenticatedUserId, getErrorMessage, validate } from "../utils.ts";
+import { userSchema, loginSchema, updateUserSchema } from "./userSchema.ts";
 const router = express.Router();
 
-router.post("/", async (req, res) => {
+router.post("/", validate(userSchema), async (req, res) => {
   const { name, email, password } = req.body;
 
   try {
@@ -18,7 +19,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", validate(loginSchema), async (req, res) => {
   const { email, password } = req.body;
   try {
     const user = await loginUser(email, password);
@@ -30,7 +31,7 @@ router.post("/login", async (req, res) => {
 
 router.use(authMiddleware);
 
-router.patch("/me", async (req, res) => {
+router.patch("/", validate(updateUserSchema), async (req, res) => {
   try {
     const userId = getAuthenticatedUserId(req);
 
@@ -46,7 +47,7 @@ router.patch("/me", async (req, res) => {
   }
 });
 
-router.delete("/me", async (req, res) => {
+router.delete("/", async (req, res) => {
   try {
     const userId = getAuthenticatedUserId(req);
 
@@ -62,7 +63,7 @@ router.delete("/me", async (req, res) => {
   }
 });
 
-router.patch("/me/restore", async (req, res) => {
+router.patch("/restore", async (req, res) => {
   try {
     const userId = getAuthenticatedUserId(req);
 
@@ -78,7 +79,7 @@ router.patch("/me/restore", async (req, res) => {
   }
 });
 
-router.get("/me", async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const userId = getAuthenticatedUserId(req);
 

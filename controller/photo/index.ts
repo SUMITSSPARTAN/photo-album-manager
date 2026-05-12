@@ -1,24 +1,15 @@
 import express from "express";
 import { createPhotos, getPhotoById, deletePhotos, movePhotoToAnotherAlbum, restorePhotos, getPhotosByAlbumId, getDeletedPhotosByUserId } from "../../service/photo/index.ts";
 import { upload } from "./util.ts";
-import { getAuthenticatedUserId, getErrorMessage } from "../utils.ts";
+import { getAuthenticatedUserId, getErrorMessage, validate } from "../utils.ts";
+import { albumIdParamsSchema, createPhotoSchema, deletePhotosSchema, getPhotoByIdParamsSchema, restorePhotosSchema } from "./photoSchema.ts";
 
 const router = express.Router();
 
-router.post("/", upload.array("photos"), async (req, res) => {
+router.post("/", upload.array("photos"), validate(createPhotoSchema), async (req, res) => {
     try {
         const { albumId } = req.body;
         const userId = getAuthenticatedUserId(req);
-
-        if (!userId) {
-            res.status(401).send("Invalid authorization token");
-            return;
-        }
-
-        if (!albumId) {
-            res.status(400).send("Missing required field: albumId");
-            return;
-        }
 
         if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
             res.status(400).send("Photo files are required");
@@ -26,7 +17,7 @@ router.post("/", upload.array("photos"), async (req, res) => {
         }
 
         const photosData = (req.files as Express.Multer.File[]).map((file) => ({
-            userId,
+            userId: userId!,
             albumId,
             path: file.path,
             type: file.mimetype,
@@ -58,7 +49,7 @@ router.get("/deleted", async (req, res) => {
     }
 });
 
-router.get("/album/:albumId", async (req, res) => {
+router.get("/album/:albumId", validate(albumIdParamsSchema, "params"), async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
 
@@ -67,14 +58,15 @@ router.get("/album/:albumId", async (req, res) => {
             return;
         }
 
-        const photos = await getPhotosByAlbumId(userId, req.params.albumId);
+        const { albumId } = req.params as { albumId: string };
+        const photos = await getPhotosByAlbumId(userId, albumId);
         res.json(photos);
     } catch (error) {
         res.status(400).send(getErrorMessage(error, "Failed to retrieve photos"));
     }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", validate(getPhotoByIdParamsSchema, "params"), async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
 
@@ -83,7 +75,8 @@ router.get("/:id", async (req, res) => {
             return;
         }
 
-        const photo = await getPhotoById(userId, req.params.id);
+        const { id } = req.params as { id: string };
+        const photo = await getPhotoById(userId, id);
         if (!photo) {
             res.status(404).send("Photo not found");
             return;
@@ -94,18 +87,13 @@ router.get("/:id", async (req, res) => {
     }
 });
 
-router.delete("/", async (req, res) => {
+router.delete("/", validate(deletePhotosSchema), async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
         const { photoIds } = req.body;
 
         if (!userId) {
             res.status(401).send("Invalid authorization token");
-            return;
-        }
-
-        if (!photoIds || !Array.isArray(photoIds) || photoIds.length === 0) {
-            res.status(400).send("photoIds array is required");
             return;
         }
 
@@ -117,18 +105,13 @@ router.delete("/", async (req, res) => {
     }
 });
 
-router.patch("/restore", async (req, res) => {
+router.patch("/restore", validate(restorePhotosSchema), async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
         const { photoIds } = req.body;
 
         if (!userId) {
             res.status(401).send("Invalid authorization token");
-            return;
-        }
-
-        if (photoIds !== undefined && (!Array.isArray(photoIds) || photoIds.length === 0)) {
-            res.status(400).send("photoIds must be a non-empty array when provided");
             return;
         }
 
@@ -139,7 +122,7 @@ router.patch("/restore", async (req, res) => {
     }
 });
 
-router.patch("/:id/album", async (req, res) => {
+router.patch("/:id/album", validate(getPhotoByIdParamsSchema, "params"), validate(createPhotoSchema), async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
         const { albumId } = req.body;
@@ -149,12 +132,8 @@ router.patch("/:id/album", async (req, res) => {
             return;
         }
 
-        if (!albumId) {
-            res.status(400).send("Missing required field: albumId");
-            return;
-        }
-
-        const payload = await movePhotoToAnotherAlbum(userId, req.params.id, albumId);
+        const { id } = req.params as { id: string };
+        const payload = await movePhotoToAnotherAlbum(userId, id, albumId);
         res.json(payload);
     } catch (error) {
         res.status(400).send(getErrorMessage(error, "Failed to move photo"));
