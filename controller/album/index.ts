@@ -1,61 +1,95 @@
 import express from "express";
-import { createAlbum, getAlbumsByUserId, deleteAlbums, getDeletedAlbumsByUserId, restoreAlbums } from "../../service/album/index.ts";
-import { getErrorMessage, validate } from "../utils.ts";
-import { createAlbumSchema, deleteAlbumsBodySchema, restoreAlbumsBodySchema } from "./albumSchema.ts";
 import type { Request } from "express";
+import { createAlbum, deleteAlbums, getAlbumsByUserId, getDeletedAlbumsByUserId, restoreAlbums } from "../../service/album/index.ts";
+import { getErrorMessage, sendErrorResponse, validate } from "../utils.ts";
+import { albumListResponseSchema, createAlbumSchema, deleteAlbumsBodySchema, deleteAlbumsResponseSchema, restoreAlbumsBodySchema } from "./albumSchema.ts";
 
 const router = express.Router();
 const getAuthenticatedUserId = (req: Request) => req.user?.userId ?? null;
+
 router.post("/", validate(createAlbumSchema), async (req, res) => {
     try {
-        const userId = getAuthenticatedUserId(req);
+        const userId = getAuthenticatedUserId(req)!;
         const { albumName } = req.body;
-        const payload = await createAlbum(userId!, albumName);
-        res.status(201).json(payload);
+        const result = await createAlbum(userId, albumName);
+
+        if (!result.ok) {
+            sendErrorResponse(res, result.status, result.message);
+            return;
+        }
+
+        res.status(201).json(albumListResponseSchema.parse({ albums: [result.data] }));
     } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to create album"));
+        sendErrorResponse(res, 500, getErrorMessage(error, "Failed to create album"));
     }
 });
 
 router.get("/", async (req, res) => {
     try {
-        const userId = getAuthenticatedUserId(req);
-        const payload = await getAlbumsByUserId(userId!);
-        res.status(200).json(payload);
+        const userId = getAuthenticatedUserId(req)!;
+        const result = await getAlbumsByUserId(userId);
+
+        if (!result.ok) {
+            sendErrorResponse(res, result.status, result.message);
+            return;
+        }
+
+        res.status(200).json(albumListResponseSchema.parse({ albums: result.data }));
     } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to fetch albums"));
+        sendErrorResponse(res, 500, getErrorMessage(error, "Failed to fetch albums"));
     }
 });
 
 router.get("/deleted", async (req, res) => {
     try {
-        const userId = getAuthenticatedUserId(req);
-        const payload = await getDeletedAlbumsByUserId(userId!);
-        res.status(200).json(payload);
+        const userId = getAuthenticatedUserId(req)!;
+        const result = await getDeletedAlbumsByUserId(userId);
+
+        if (!result.ok) {
+            sendErrorResponse(res, result.status, result.message);
+            return;
+        }
+
+        res.status(200).json(albumListResponseSchema.parse({ albums: result.data }));
     } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to fetch deleted albums"));
+        sendErrorResponse(res, 500, getErrorMessage(error, "Failed to fetch deleted albums"));
     }
 });
 
 router.delete("/", validate(deleteAlbumsBodySchema), async (req, res) => {
     try {
-        const userId = getAuthenticatedUserId(req);
+        const userId = getAuthenticatedUserId(req)!;
         const { albumIds } = req.body;
-        const payload = await deleteAlbums(userId!, albumIds);
-        res.status(200).json(payload);
+        const result = await deleteAlbums(userId, albumIds);
+
+        if (!result.ok) {
+            sendErrorResponse(res, result.status, result.message);
+            return;
+        }
+
+        res.status(200).json(deleteAlbumsResponseSchema.parse({
+            message: "Albums deleted successfully",
+            deletedCount: result.data.deletedCount,
+        }));
     } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to delete albums"));
+        sendErrorResponse(res, 500, getErrorMessage(error, "Failed to delete albums"));
     }
 });
 
 router.patch("/restore", validate(restoreAlbumsBodySchema), async (req, res) => {
     try {
-        const userId = getAuthenticatedUserId(req);
+        const userId = getAuthenticatedUserId(req)!;
         const { albumIds } = req.body;
-        const payload = await restoreAlbums(userId!, albumIds);
-        res.status(200).json(payload);
+        const result = await restoreAlbums(userId, albumIds);
+
+        if (!result.ok) {
+            sendErrorResponse(res, result.status, result.message);
+            return;
+        }
+
+        res.status(200).json(albumListResponseSchema.parse({ albums: result.data }));
     } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to restore albums"));
+        sendErrorResponse(res, 500, getErrorMessage(error, "Failed to restore albums"));
     }
 });
 

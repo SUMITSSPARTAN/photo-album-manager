@@ -1,159 +1,206 @@
 import db from "../../config/prismaClient.ts";
-import type { Prisma } from "../../generated/prisma/client.ts";
+import { Prisma } from "../../generated/prisma/client.ts";
 
-export const createAlbum = async (userId: string, name: string) => {
-    try {
-        const existingAlbum = await db.album.findFirst({
-            where: {
-                userId,
-                name,
-                deletedAt: null,
-            }
-        });
+type AlbumDto = {
+    id: string;
+    name: string;
+    contentSize: number;
+    createdAt: Date;
+    deletedAt: Date | null;
+};
 
-        if (existingAlbum) {
-            throw new Error("Album with the same name already exists for the user");
+type ServiceError = { ok: false; status: number; message: string };
+export type ServiceResult<T> = { ok: true; data: T } | ServiceError;
+
+const albumSelect = {
+    id: true,
+    name: true,
+    contentSize: true,
+    createdAt: true,
+    deletedAt: true,
+} satisfies Prisma.AlbumSelect;
+
+const serviceError = (status: number, message: string): ServiceError => ({ ok: false, status, message });
+
+const isKnownPrismaError = (error: unknown): error is Prisma.PrismaClientKnownRequestError =>
+    error instanceof Prisma.PrismaClientKnownRequestError;
+
+const normalizeAlbumName = (name: string) => name.trim();
+
+const handleAlbumWriteError = (error: unknown, fallbackMessage: string): ServiceError => {
+    if (isKnownPrismaError(error)) {
+        if (error.code === "P2002") {
+            return serviceError(409, "Album with the same name already exists for the user");
         }
 
-        return await db.album.create({
+        if (error.code === "P2025") {
+            return serviceError(404, "Album not found");
+        }
+    }
+
+    console.error(fallbackMessage, error);
+    return serviceError(500, fallbackMessage);
+};
+
+export const createAlbum = async (userId: string, name: string): Promise<ServiceResult<AlbumDto>> => {
+    try {
+        const album = await db.album.create({
             data: {
                 userId,
-                name,
-                createdAt: new Date()
-            }
+                name: normalizeAlbumName(name),
+            },
+            select: albumSelect,
         });
-    } catch (error) {
-        console.error("Error creating album:", error);
-        throw new Error("Failed to create album");
-    }
-}
 
-export const getAlbumsByUserId = async (userId: string) => {
-    try {
-        return await db.album.findMany({
-            where: {
-                userId,
-                deletedAt: null,
-            }
-        });
+        return { ok: true, data: album };
     } catch (error) {
-        console.error("Error fetching albums:", error);
-        throw new Error("Failed to fetch albums");
+        return handleAlbumWriteError(error, "Failed to create album");
     }
-}
+};
 
-export const getAlbumById = async (albumId: string) => {
-    try {
-        return await db.album.findUnique({
-            where: { id: albumId }
-        });
-    } catch (error) {
-        console.error("Error fetching album:", error);
-        throw new Error("Failed to fetch album");
-    }
-}
-
-export const deleteAlbums = async (userId: string, albumIds: string[]) => {
+export const getAlbumsByUserId = async (userId: string): Promise<ServiceResult<AlbumDto[]>> => {
     try {
         const albums = await db.album.findMany({
             where: {
                 userId,
-                id: {
-                    in: albumIds,
-                },
                 deletedAt: null,
-            }
+            },
+            select: albumSelect,
+            orderBy: { createdAt: "desc" },
         });
 
-        if (albums.length !== albumIds.length) {
-            throw new Error("One or more albums were not found");
-        }
-
-        const operations = albums.flatMap((album) => {
-            const deletedAt = new Date();
-            return [
-                db.album.update({
-                    where: { id: album.id },
-                    data: { deletedAt }
-                }),
-                db.photo.updateMany({
-                    where: {
-                        albumId: album.id,
-                        deletedAt: null,
-                    },
-                    data: { deletedAt }
-                })
-            ];
-        });
-
-        return await db.$transaction(operations);
+        return { ok: true, data: albums };
     } catch (error) {
-        console.error("Error deleting albums:", error);
-        throw error instanceof Error ? error : new Error("Failed to delete albums");
+        console.error("Failed to fetch albums", error);
+        return serviceError(500, "Failed to fetch albums");
     }
-}
+};
 
-export const getDeletedAlbumsByUserId = async (userId: string) => {
+export const deleteAlbums = async (userId: string, albumIds: string[]): Promise<ServiceResult<{ deletedCount: number }>> => {
     try {
-        return await db.album.findMany({
-            where: {
-                userId,
-                deletedAt: {
-                    not: null,
-                },
-            }
-        });
-    } catch (error) {
-        console.error("Error fetching deleted albums:", error);
-        throw new Error("Failed to fetch deleted albums");
-    }
-}
-
-export const restoreAlbums = async (userId: string, albumIds?: string[]) => {
-    try {
-        const where: Prisma.AlbumWhereInput = {
-            userId,
-            deletedAt: {
-                not: null,
-            }
-        };
-
-        if (albumIds && albumIds.length > 0) {
-            where.id = {
-                in: albumIds,
-            };
-        }
-
-        const albums = await db.album.findMany({
-            where
-        });
-
-        if (albumIds && albumIds.length > 0 && albums.length !== albumIds.length) {
-            throw new Error("One or more albums were not found");
-        }
-
-        const operations = albums.flatMap((album) => [
-            db.album.update({
+        const deletedCount = await db.$transaction(async (tx) => {
+            const albums = await tx.album.findMany({
                 where: {
-                    id: album.id
-                },
-                data: {
+                    userId,
+                    id: { in: albumIds },
                     deletedAt: null,
-                }
-            }),
-            db.photo.updateMany({
-                where: {
-                    albumId: album.id,
-                    deletedAt: album.deletedAt,
                 },
-                data: { deletedAt: null }
-            })
-        ]);
+                select: {
+                    id: true,
+                },
+            });
 
-        return await db.$transaction(operations);
+            if (albums.length !== albumIds.length) {
+                throw serviceError(404, "One or more albums were not found");
+            }
 
+            const deletedAt = new Date();
+
+            await tx.album.updateMany({
+                where: {
+                    userId,
+                    id: { in: albumIds },
+                    deletedAt: null,
+                },
+                data: { deletedAt },
+            });
+
+            await tx.photo.updateMany({
+                where: {
+                    albumId: { in: albumIds },
+                    deletedAt: null,
+                },
+                data: { deletedAt },
+            });
+
+            return albums.length;
+        });
+
+        return { ok: true, data: { deletedCount } };
     } catch (error) {
-        console.error("Error restoring albums:", error);
-        throw error instanceof Error ? error : new Error("Failed to restore albums");
+        if (typeof error === "object" && error !== null && "ok" in error && !error.ok) {
+            return error as ServiceError;
+        }
+
+        console.error("Failed to delete albums", error);
+        return serviceError(500, "Failed to delete albums");
+    }
+};
+
+export const getDeletedAlbumsByUserId = async (userId: string): Promise<ServiceResult<AlbumDto[]>> => {
+    try {
+        const albums = await db.album.findMany({
+            where: {
+                userId,
+                deletedAt: { not: null },
+            },
+            select: albumSelect,
+            orderBy: { createdAt: "desc" },
+        });
+
+        return { ok: true, data: albums };
+    } catch (error) {
+        console.error("Failed to fetch deleted albums", error);
+        return serviceError(500, "Failed to fetch deleted albums");
+    }
+};
+
+export const restoreAlbums = async (userId: string, albumIds?: string[]): Promise<ServiceResult<AlbumDto[]>> => {
+    try {
+        const restoredAlbums = await db.$transaction(async (tx) => {
+            const where: Prisma.AlbumWhereInput = {
+                userId,
+                deletedAt: { not: null },
+            };
+
+            if (albumIds && albumIds.length > 0) {
+                where.id = { in: albumIds };
+            }
+
+            const albums = await tx.album.findMany({
+                where,
+                select: {
+                    id: true,
+                    deletedAt: true,
+                },
+            });
+
+            if (albumIds && albumIds.length > 0 && albums.length !== albumIds.length) {
+                throw serviceError(404, "One or more albums were not found");
+            }
+
+            const restored = await Promise.all(
+                albums.map((album) =>
+                    tx.album.update({
+                        where: { id: album.id },
+                        data: { deletedAt: null },
+                        select: albumSelect,
+                    }),
+                ),
+            );
+
+            await Promise.all(
+                albums.map((album) =>
+                    tx.photo.updateMany({
+                        where: {
+                            albumId: album.id,
+                            deletedAt: album.deletedAt,
+                        },
+                        data: { deletedAt: null },
+                    }),
+                ),
+            );
+
+            return restored;
+        });
+
+        return { ok: true, data: restoredAlbums };
+    } catch (error) {
+        if (typeof error === "object" && error !== null && "ok" in error && !error.ok) {
+            return error as ServiceError;
+        }
+
+        console.error("Failed to restore albums", error);
+        return serviceError(500, "Failed to restore albums");
     }
 };
