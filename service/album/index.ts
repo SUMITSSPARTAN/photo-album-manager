@@ -69,14 +69,24 @@ export const deleteAlbums = async (userId: string, albumIds: string[]) => {
             throw new Error("One or more albums were not found");
         }
 
-        return await db.$transaction(
-            albums.map((album) =>
+        const operations = albums.flatMap((album) => {
+            const deletedAt = new Date();
+            return [
                 db.album.update({
                     where: { id: album.id },
-                    data: { deletedAt: new Date() }
+                    data: { deletedAt }
+                }),
+                db.photo.updateMany({
+                    where: {
+                        albumId: album.id,
+                        deletedAt: null,
+                    },
+                    data: { deletedAt }
                 })
-            )
-        );
+            ];
+        });
+
+        return await db.$transaction(operations);
     } catch (error) {
         console.error("Error deleting albums:", error);
         throw error instanceof Error ? error : new Error("Failed to delete albums");
@@ -122,18 +132,25 @@ export const restoreAlbums = async (userId: string, albumIds?: string[]) => {
             throw new Error("One or more albums were not found");
         }
 
-        return await db.$transaction(
-            albums.map((album) =>
-                db.album.update({
-                    where: {
-                        id: album.id
-                    },
-                    data: {
-                        deletedAt: null,
-                    }
-                })
-            )
-        );
+        const operations = albums.flatMap((album) => [
+            db.album.update({
+                where: {
+                    id: album.id
+                },
+                data: {
+                    deletedAt: null,
+                }
+            }),
+            db.photo.updateMany({
+                where: {
+                    albumId: album.id,
+                    deletedAt: album.deletedAt,
+                },
+                data: { deletedAt: null }
+            })
+        ]);
+
+        return await db.$transaction(operations);
 
     } catch (error) {
         console.error("Error restoring albums:", error);
