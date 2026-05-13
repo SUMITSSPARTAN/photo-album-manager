@@ -1,108 +1,148 @@
 import express from "express";
-import { createPhotos, getPhotoById, deletePhotos, movePhotoToAnotherAlbum, restorePhotos, getPhotosByAlbumId, getDeletedPhotosByUserId } from "../../service/photo/index.ts";
-import { upload } from "./util.ts";
-import { getErrorMessage, validate } from "../utils.ts";
-import { albumIdParamsSchema, createPhotoSchema, deletePhotosSchema, getPhotoByIdParamsSchema, restorePhotosSchema } from "./photoSchema.ts";
 import type { Request } from "express";
+import { createPhotos, deletePhotos, getDeletedPhotosByUserId, getPhotoById, getPhotosByAlbumId, movePhotoToAnotherAlbum, restorePhotos } from "../../service/photo/index.ts";
+import { getErrorMessage, sendErrorResponse, validate } from "../utils.ts";
+import { upload } from "./util.ts";
+import { albumIdParamsSchema, createPhotoSchema, deletePhotosResponseSchema, deletePhotosSchema, getPhotoByIdParamsSchema, photoItemResponseSchema, photoListResponseSchema, restorePhotosSchema } from "./photoSchema.ts";
 
 const router = express.Router();
 const getAuthenticatedUserId = (req: Request) => req.user?.userId ?? null;
 
 router.post("/", upload.array("photos"), validate(createPhotoSchema), async (req, res) => {
     try {
-        const { albumId } = req.body;
-        const userId = getAuthenticatedUserId(req);
+        const userId = getAuthenticatedUserId(req)!;
 
         if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
-            res.status(400).send("Photo files are required");
+            sendErrorResponse(res, 400, "Photo files are required");
             return;
         }
 
-        const photosData = (req.files as Express.Multer.File[]).map((file) => ({
-            userId: userId!,
-            albumId,
-            path: file.path,
-            type: file.mimetype,
-            size: file.size,
-            encoding: file.encoding,
-            originalName: file.originalname,
-        }));
+        const { albumId } = req.body;
+        const result = await createPhotos(
+            req.files.map((file) => ({
+                userId,
+                albumId,
+                path: file.path,
+                type: file.mimetype,
+                size: file.size,
+                encoding: file.encoding,
+                originalName: file.originalname,
+            })),
+        );
 
-        const payload = await createPhotos(photosData);
-        res.status(201).json(payload);
+        if (!result.ok) {
+            sendErrorResponse(res, result.status, result.message);
+            return;
+        }
+
+        res.status(201).json(photoListResponseSchema.parse({ photos: result.data }));
     } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to create photos"));
+        sendErrorResponse(res, 500, getErrorMessage(error, "Failed to create photos"));
     }
 });
 
 router.get("/deleted", async (req, res) => {
     try {
-        const userId = getAuthenticatedUserId(req);
-        const photos = await getDeletedPhotosByUserId(userId!);
-        res.json(photos);
+        const userId = getAuthenticatedUserId(req)!;
+
+        const result = await getDeletedPhotosByUserId(userId);
+        if (!result.ok) {
+            sendErrorResponse(res, result.status, result.message);
+            return;
+        }
+
+        res.json(photoListResponseSchema.parse({ photos: result.data }));
     } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to retrieve deleted photos"));
+        sendErrorResponse(res, 500, getErrorMessage(error, "Failed to retrieve deleted photos"));
     }
 });
 
 router.get("/album/:albumId", validate(albumIdParamsSchema, "params"), async (req, res) => {
     try {
-        const userId = getAuthenticatedUserId(req);
+        const userId = getAuthenticatedUserId(req)!;
+
         const { albumId } = req.params as { albumId: string };
-        const photos = await getPhotosByAlbumId(userId!, albumId);
-        res.json(photos);
+        const result = await getPhotosByAlbumId(userId, albumId);
+        if (!result.ok) {
+            sendErrorResponse(res, result.status, result.message);
+            return;
+        }
+
+        res.json(photoListResponseSchema.parse({ photos: result.data }));
     } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to retrieve photos"));
+        sendErrorResponse(res, 500, getErrorMessage(error, "Failed to retrieve photos"));
     }
 });
 
 router.get("/:id", validate(getPhotoByIdParamsSchema, "params"), async (req, res) => {
     try {
-        const userId = getAuthenticatedUserId(req);
+        const userId = getAuthenticatedUserId(req)!;
+
         const { id } = req.params as { id: string };
-        const photo = await getPhotoById(userId!, id);
-        if (!photo) {
-            res.status(404).send("Photo not found");
+        const result = await getPhotoById(userId, id);
+        if (!result.ok) {
+            sendErrorResponse(res, result.status, result.message);
             return;
         }
-        res.json(photo);
+
+        res.json(photoItemResponseSchema.parse({ photo: result.data }));
     } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to retrieve photo"));
+        sendErrorResponse(res, 500, getErrorMessage(error, "Failed to retrieve photo"));
     }
 });
 
 router.delete("/", validate(deletePhotosSchema), async (req, res) => {
     try {
-        const userId = getAuthenticatedUserId(req);
-        const { photoIds } = req.body;
-        await deletePhotos(userId!, photoIds);
+        const userId = getAuthenticatedUserId(req)!;
 
-        res.status(204).send();
+        const { photoIds } = req.body;
+        const result = await deletePhotos(userId, photoIds);
+        if (!result.ok) {
+            sendErrorResponse(res, result.status, result.message);
+            return;
+        }
+
+        res.json(deletePhotosResponseSchema.parse({
+            message: "Photos deleted successfully",
+            deletedCount: result.data.deletedCount,
+        }));
     } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to delete photos"));
+        sendErrorResponse(res, 500, getErrorMessage(error, "Failed to delete photos"));
     }
 });
 
 router.patch("/restore", validate(restorePhotosSchema), async (req, res) => {
     try {
-        const userId = getAuthenticatedUserId(req);
+        const userId = getAuthenticatedUserId(req)!;
+
         const { photoIds } = req.body;
-        const restoredPhotos = await restorePhotos(userId!, photoIds);
-        res.json(restoredPhotos);
+        const result = await restorePhotos(userId, photoIds);
+        if (!result.ok) {
+            sendErrorResponse(res, result.status, result.message);
+            return;
+        }
+
+        res.json(photoListResponseSchema.parse({ photos: result.data }));
     } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to restore photos"));
+        sendErrorResponse(res, 500, getErrorMessage(error, "Failed to restore photos"));
     }
 });
 
 router.patch("/:id/album", validate(getPhotoByIdParamsSchema, "params"), validate(createPhotoSchema), async (req, res) => {
     try {
-        const userId = getAuthenticatedUserId(req);
-        const { albumId } = req.body;
+        const userId = getAuthenticatedUserId(req)!;
+
         const { id } = req.params as { id: string };
-        const payload = await movePhotoToAnotherAlbum(userId!, id, albumId);
-        res.json(payload);
+        const { albumId } = req.body;
+        const result = await movePhotoToAnotherAlbum(userId, id, albumId);
+        if (!result.ok) {
+            sendErrorResponse(res, result.status, result.message);
+            return;
+        }
+
+        res.json(photoItemResponseSchema.parse({ photo: result.data }));
     } catch (error) {
-        res.status(400).send(getErrorMessage(error, "Failed to move photo"));
+        sendErrorResponse(res, 500, getErrorMessage(error, "Failed to move photo"));
     }
 });
 

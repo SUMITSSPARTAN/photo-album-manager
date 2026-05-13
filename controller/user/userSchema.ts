@@ -30,13 +30,17 @@ export const errorResponseSchema = zod.object({
 
 const dateSchema = zod.union([zod.string().datetime(), zod.date()]);
 
+const photoMetadataSchema = zod.object({
+  encoding: zod.string().min(1),
+  originalName: zod.string().min(1),
+}).strict();
+
 export const photoSchema = zod.object({
   id: zod.string().cuid(),
   path: zod.string(),
   type: zod.string(),
   size: zod.number().int().nonnegative(),
-  encoding: zod.string().min(1),
-  originalName: zod.string().min(1),
+  metadata: photoMetadataSchema,
   uploadedAt: dateSchema,
   albumId: zod.string().cuid(),
 }).strict();

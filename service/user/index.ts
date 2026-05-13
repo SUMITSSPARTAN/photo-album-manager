@@ -20,10 +20,12 @@ type UserProfile = UserSummary & {
         path: string;
         type: string;
         size: number;
-        encoding: string; 
-        originalName: string;
+        metadata: {
+            encoding: string;
+            originalName: string;
+        };
         uploadedAt: Date;
-        albumId: string | null;
+        albumId: string;
     }>;
     albums: Array<{
         id: string;
@@ -31,23 +33,6 @@ type UserProfile = UserSummary & {
         contentSize: number;
         createdAt: Date;
     }>;
-};
-
-const toPhotoMetadata = (value: Prisma.JsonValue): { encoding: string; originalName: string } | null => {
-    if (
-        value &&
-        typeof value === "object" &&
-        !Array.isArray(value) &&
-        typeof value.encoding === "string" &&
-        typeof value.originalName === "string"
-    ) {
-        return {
-            encoding: value.encoding,
-            originalName: value.originalName,
-        };
-    }
-
-    return null;
 };
 
 const userCredentialsSelect = {
@@ -74,8 +59,8 @@ const userProfileSelect = {
             path: true,
             type: true,
             size: true,
-            originalName: true,
             encoding: true,
+            originalName: true,
             uploadedAt: true,
             albumId: true,
         },
@@ -142,6 +127,10 @@ export const loginUser = async (email: string, password: string): Promise<Servic
     try {
         const user = await getUserByEmail(normalizeEmail(email));
 
+        if (!user) {
+            return serviceError(401, "Invalid email or password");
+        }
+
         if (user.deletedAt !== null) {
             return serviceError(403, "User account is deleted. Please restore your account to log in.");
         }
@@ -178,16 +167,10 @@ export const loginUser = async (email: string, password: string): Promise<Servic
 };
 
 export const getUserByEmail = async (email: string) => {
-    try {
-        return await db.user.findUniqueOrThrow({
-            where: { email: normalizeEmail(email) },
-            select: userCredentialsSelect,
-        });
-
-    } catch (error) {
-        console.error("Failed to fetch user by email", error);
-        throw new Error("User not found");
-    }
+    return db.user.findUnique({
+        where: { email: normalizeEmail(email) },
+        select: userCredentialsSelect,
+    });
 };
 
 export const getUserById = async (id: string): Promise<ServiceResult<UserProfile>> => {
@@ -202,13 +185,24 @@ export const getUserById = async (id: string): Promise<ServiceResult<UserProfile
             data: {
                 ...user,
                 photos: user.photos.map((photo) => ({
-                    ...photo,
-                    originalName: photo.originalName,
-                    encoding: photo.encoding,
+                    id: photo.id,
+                    path: photo.path,
+                    type: photo.type,
+                    size: photo.size,
+                    metadata: {
+                        encoding: photo.encoding,
+                        originalName: photo.originalName,
+                    },
+                    uploadedAt: photo.uploadedAt,
+                    albumId: photo.albumId,
                 })),
             },
         };
     } catch (error) {
+        if (isKnownPrismaError(error) && error.code === "P2025") {
+            return serviceError(404, "User not found");
+        }
+
         console.error("Failed to fetch user", error);
         return serviceError(500, "Failed to fetch user");
     }
