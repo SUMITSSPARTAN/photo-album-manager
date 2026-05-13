@@ -1,10 +1,12 @@
 import express from "express";
 import { createPhotos, getPhotoById, deletePhotos, movePhotoToAnotherAlbum, restorePhotos, getPhotosByAlbumId, getDeletedPhotosByUserId } from "../../service/photo/index.ts";
 import { upload } from "./util.ts";
-import { getAuthenticatedUserId, getErrorMessage, validate } from "../utils.ts";
+import { getErrorMessage, validate } from "../utils.ts";
 import { albumIdParamsSchema, createPhotoSchema, deletePhotosSchema, getPhotoByIdParamsSchema, restorePhotosSchema } from "./photoSchema.ts";
+import type { Request } from "express";
 
 const router = express.Router();
+const getAuthenticatedUserId = (req: Request) => req.user?.userId ?? null;
 
 router.post("/", upload.array("photos"), validate(createPhotoSchema), async (req, res) => {
     try {
@@ -36,13 +38,7 @@ router.post("/", upload.array("photos"), validate(createPhotoSchema), async (req
 router.get("/deleted", async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
-
-        if (!userId) {
-            res.status(401).send("Invalid authorization token");
-            return;
-        }
-
-        const photos = await getDeletedPhotosByUserId(userId);
+        const photos = await getDeletedPhotosByUserId(userId!);
         res.json(photos);
     } catch (error) {
         res.status(400).send(getErrorMessage(error, "Failed to retrieve deleted photos"));
@@ -52,14 +48,8 @@ router.get("/deleted", async (req, res) => {
 router.get("/album/:albumId", validate(albumIdParamsSchema, "params"), async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
-
-        if (!userId) {
-            res.status(401).send("Invalid authorization token");
-            return;
-        }
-
         const { albumId } = req.params as { albumId: string };
-        const photos = await getPhotosByAlbumId(userId, albumId);
+        const photos = await getPhotosByAlbumId(userId!, albumId);
         res.json(photos);
     } catch (error) {
         res.status(400).send(getErrorMessage(error, "Failed to retrieve photos"));
@@ -69,14 +59,8 @@ router.get("/album/:albumId", validate(albumIdParamsSchema, "params"), async (re
 router.get("/:id", validate(getPhotoByIdParamsSchema, "params"), async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
-
-        if (!userId) {
-            res.status(401).send("Invalid authorization token");
-            return;
-        }
-
         const { id } = req.params as { id: string };
-        const photo = await getPhotoById(userId, id);
+        const photo = await getPhotoById(userId!, id);
         if (!photo) {
             res.status(404).send("Photo not found");
             return;
@@ -91,13 +75,7 @@ router.delete("/", validate(deletePhotosSchema), async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
         const { photoIds } = req.body;
-
-        if (!userId) {
-            res.status(401).send("Invalid authorization token");
-            return;
-        }
-
-        await deletePhotos(userId, photoIds);
+        await deletePhotos(userId!, photoIds);
 
         res.status(204).send();
     } catch (error) {
@@ -109,13 +87,7 @@ router.patch("/restore", validate(restorePhotosSchema), async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req);
         const { photoIds } = req.body;
-
-        if (!userId) {
-            res.status(401).send("Invalid authorization token");
-            return;
-        }
-
-        const restoredPhotos = await restorePhotos(userId, photoIds);
+        const restoredPhotos = await restorePhotos(userId!, photoIds);
         res.json(restoredPhotos);
     } catch (error) {
         res.status(400).send(getErrorMessage(error, "Failed to restore photos"));
@@ -126,14 +98,8 @@ router.patch("/:id/album", validate(getPhotoByIdParamsSchema, "params"), validat
     try {
         const userId = getAuthenticatedUserId(req);
         const { albumId } = req.body;
-
-        if (!userId) {
-            res.status(401).send("Invalid authorization token");
-            return;
-        }
-
         const { id } = req.params as { id: string };
-        const payload = await movePhotoToAnotherAlbum(userId, id, albumId);
+        const payload = await movePhotoToAnotherAlbum(userId!, id, albumId);
         res.json(payload);
     } catch (error) {
         res.status(400).send(getErrorMessage(error, "Failed to move photo"));

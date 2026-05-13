@@ -4,8 +4,6 @@ import type { ZodTypeAny } from "zod";
 export const getErrorMessage = (error: unknown, fallback: string) =>
     error instanceof Error ? error.message : fallback;
 
-export const getAuthenticatedUserId = (req: Request) => req.user?.userId ?? null;
-
 type ValidationTarget = "body" | "params" | "query";
 
 export const validate =

@@ -1,9 +1,11 @@
 import express from "express";
 import { createUser, loginUser, updateUser, deleteUser, getUserById, restoreUser } from "../../service/user/index.ts";
 import { authMiddleware, generateTokensFromRefreshToken } from "../../config/auth.ts";
-import { getAuthenticatedUserId, getErrorMessage, validate } from "../utils.ts";
+import { getErrorMessage, validate } from "../utils.ts";
 import { userSchema, loginSchema, updateUserSchema } from "./userSchema.ts";
+import type { Request } from "express";
 const router = express.Router();
+const getAuthenticatedUserId = (req: Request) => req.user?.userId ?? null;
 const refreshTokenCookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
