@@ -20,7 +20,8 @@ type UserProfile = UserSummary & {
         path: string;
         type: string;
         size: number;
-        metadata: { encoding: string; originalName: string } | null;
+        encoding: string; 
+        originalName: string;
         uploadedAt: Date;
         albumId: string | null;
     }>;
@@ -73,7 +74,8 @@ const userProfileSelect = {
             path: true,
             type: true,
             size: true,
-            metadata: true,
+            originalName: true,
+            encoding: true,
             uploadedAt: true,
             albumId: true,
         },
@@ -201,7 +203,8 @@ export const getUserById = async (id: string): Promise<ServiceResult<UserProfile
                 ...user,
                 photos: user.photos.map((photo) => ({
                     ...photo,
-                    metadata: toPhotoMetadata(photo.metadata),
+                    originalName: photo.originalName,
+                    encoding: photo.encoding,
                 })),
             },
         };

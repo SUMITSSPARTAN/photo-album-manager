@@ -50,11 +50,6 @@ export const createPhotos = async (photos: CreatePhotoInput[]) => {
         throw new Error("Album not found for the user");
       }
 
-      const metadata: Prisma.InputJsonValue = {
-        originalName: photoData.originalName,
-        encoding: photoData.encoding,
-      };
-
       const createdPhoto = await db.photo.create({
         data: {
           userId: photoData.userId,
@@ -62,7 +57,8 @@ export const createPhotos = async (photos: CreatePhotoInput[]) => {
           path: photoData.path,
           type: photoData.type,
           size: photoData.size,
-          metadata,
+          originalName: photoData.originalName,
+          encoding: photoData.encoding
         },
       });
 

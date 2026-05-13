@@ -8,37 +8,40 @@ datasource db {
 }
 
 model User {
-  id         String   @id @default(cuid())
-  name       String
-  email      String   @unique
-  password   String
-  createdAt  DateTime @default(now())
-  photos     Photo[]
-  albums     Album[]
-  deletedAt  DateTime?
+  id        String    @id @default(cuid())
+  name      String
+  email     String    @unique
+  password  String
+  createdAt DateTime  @default(now())
+  photos    Photo[]
+  albums    Album[]
+  deletedAt DateTime?
 }
 
 model Photo {
-  id          String   @id @default(cuid())
-  path        String
-  type        String
-  size        Int
-  metadata    Json?
-  uploadedAt  DateTime @default(now())
-  deletedAt   DateTime?
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  albumId     String?
-  album       Album?   @relation(fields: [albumId], references: [id], onDelete: SetNull)
+  id           String    @id @default(cuid())
+  path         String
+  type         String
+  size         Int
+  encoding     String
+  originalName String
+  uploadedAt   DateTime  @default(now())
+  deletedAt    DateTime?
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  albumId      String
+  album        Album     @relation(fields: [albumId], references: [id], onDelete: Cascade)
 }
 
 model Album {
-  id           String   @id @default(cuid())
-  name         String   @unique
-  contentSize  Int      @default(0)
-  createdAt    DateTime @default(now())
-  deletedAt    DateTime?
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  photos       Photo[]
+  id          String    @id @default(cuid())
+  name        String
+  contentSize Int       @default(0)
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  photos      Photo[]
+
+  @@unique([userId, name])
 }
