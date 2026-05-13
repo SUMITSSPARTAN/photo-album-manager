@@ -140,10 +140,6 @@ export const loginUser = async (email: string, password: string): Promise<Servic
     try {
         const user = await getUserByEmail(normalizeEmail(email));
 
-        if (!user) {
-            return serviceError(401, "Invalid email or password");
-        }
-
         if (user.deletedAt !== null) {
             return serviceError(403, "User account is deleted. Please restore your account to log in.");
         }
@@ -180,22 +176,24 @@ export const loginUser = async (email: string, password: string): Promise<Servic
 };
 
 export const getUserByEmail = async (email: string) => {
-    return await db.user.findUnique({
-        where: { email: normalizeEmail(email) },
-        select: userCredentialsSelect,
-    });
+    try {
+        return await db.user.findUniqueOrThrow({
+            where: { email: normalizeEmail(email) },
+            select: userCredentialsSelect,
+        });
+
+    } catch (error) {
+        console.error("Failed to fetch user by email", error);
+        throw new Error("User not found");
+    }
 };
 
 export const getUserById = async (id: string): Promise<ServiceResult<UserProfile>> => {
     try {
-        const user = await db.user.findUnique({
+        const user = await db.user.findUniqueOrThrow({
             where: { id },
             select: userProfileSelect,
         });
-
-        if (!user) {
-            return serviceError(404, "User not found");
-        }
 
         return {
             ok: true,
