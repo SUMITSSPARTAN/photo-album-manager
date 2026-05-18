@@ -1,4 +1,5 @@
 import db from "../../config/prismaClient.ts";
+import type { Prisma } from "../../generated/prisma/client.ts";
 
 type CreatePhotoInput = {
   userId: string;
@@ -109,7 +110,7 @@ export const createPhotos = async (photos: CreatePhotoInput[]): Promise<ServiceR
 
     const { albumId } = photos[0]!;
 
-    const createdPhotos = await db.$transaction(async (tx) => {
+    const createdPhotos = await db.$transaction(async (tx: Prisma.TransactionClient) => {
       const insertedPhotos = await Promise.all(
         photos.map((photo) =>
           tx.photo.create({
@@ -148,7 +149,7 @@ export const createPhotos = async (photos: CreatePhotoInput[]): Promise<ServiceR
 
 export const deletePhotos = async (userId: string, photoIds: string[]): Promise<ServiceResult<{ deletedCount: number }>> => {
   try {
-    const deletedCount = await db.$transaction(async (tx) => {
+    const deletedCount = await db.$transaction(async (tx: Prisma.TransactionClient) => {
       const photos = await tx.photo.findMany({
         where: {
           userId,
@@ -204,7 +205,7 @@ export const deletePhotos = async (userId: string, photoIds: string[]): Promise<
 
 export const restorePhotos = async (userId: string, photoIds?: string[]): Promise<ServiceResult<PhotoDto[]>> => {
   try {
-    const restoredPhotos = await db.$transaction(async (tx) => {
+    const restoredPhotos = await db.$transaction(async (tx: Prisma.TransactionClient) => {
       const where: {
         userId: string;
         deletedAt: { not: null };
@@ -304,7 +305,7 @@ export const getDeletedPhotosByUserId = async (userId: string): Promise<ServiceR
 
 export const movePhotoToAnotherAlbum = async (userId: string, photoId: string, albumId: string): Promise<ServiceResult<PhotoDto>> => {
   try {
-    const movedPhoto = await db.$transaction(async (tx) => {
+    const movedPhoto = await db.$transaction(async (tx: Prisma.TransactionClient) => {
       const photo = await tx.photo.findFirst({
         where: {
           id: photoId,

@@ -78,7 +78,7 @@ export const getAlbumsByUserId = async (userId: string): Promise<ServiceResult<A
 
 export const deleteAlbums = async (userId: string, albumIds: string[]): Promise<ServiceResult<{ deletedCount: number }>> => {
     try {
-        const deletedCount = await db.$transaction(async (tx) => {
+        const deletedCount = await db.$transaction(async (tx: Prisma.TransactionClient) => {
             const albums = await tx.album.findMany({
                 where: {
                     userId,
@@ -147,7 +147,7 @@ export const getDeletedAlbumsByUserId = async (userId: string): Promise<ServiceR
 
 export const restoreAlbums = async (userId: string, albumIds?: string[]): Promise<ServiceResult<AlbumDto[]>> => {
     try {
-        const restoredAlbums = await db.$transaction(async (tx) => {
+        const restoredAlbums = await db.$transaction(async (tx: Prisma.TransactionClient) => {
             const where: Prisma.AlbumWhereInput = {
                 userId,
                 deletedAt: { not: null },

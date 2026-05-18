@@ -4,6 +4,7 @@
   "description": "",
   "main": "dist/server.js",
   "scripts": {
+    "prebuild": "npm exec prisma generate",
     "build": "tsc -p tsconfig.json",
     "start": "nodemon dist/server.js",
     "dev": "npm run build && npm run start",
