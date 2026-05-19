@@ -1,9 +1,9 @@
 import express from "express";
 import type { Request } from "express";
-import { createPhotos, deletePhotos, getDeletedPhotosByUserId, getPhotoById, getPhotosByAlbumId, movePhotoToAnotherAlbum, restorePhotos } from "../../service/photo/index.ts";
+import { createPhotos, deletePhotos, getDeletedPhotosByUserId, getPhotosByAlbumId, getPhotosByUserId, movePhotoToAnotherAlbum, restorePhotos } from "../../service/photo/index.ts";
 import { getErrorMessage, sendErrorResponse, validate } from "../utils.ts";
 import { upload } from "./util.ts";
-import { albumIdParamsSchema, createPhotoSchema, deletePhotosResponseSchema, deletePhotosSchema, getPhotoByIdParamsSchema, photoItemResponseSchema, photoListResponseSchema, restorePhotosSchema } from "./photoSchema.ts";
+import { albumIdParamsSchema, createPhotoSchema, deletePhotosResponseSchema, deletePhotosSchema, photoIdParamsSchema, photoItemResponseSchema, photoListResponseSchema, restorePhotosSchema } from "./photoSchema.ts";
 
 const router = express.Router();
 const getAuthenticatedUserId = (req: Request) => req.user?.userId ?? null;
@@ -74,20 +74,19 @@ router.get("/album/:albumId", validate(albumIdParamsSchema, "params"), async (re
     }
 });
 
-router.get("/:id", validate(getPhotoByIdParamsSchema, "params"), async (req, res) => {
+router.get("/", async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req)!;
 
-        const { id } = req.params as { id: string };
-        const result = await getPhotoById(userId, id);
+        const result = await getPhotosByUserId(userId);
         if (!result.ok) {
             sendErrorResponse(res, result.status, result.message);
             return;
         }
 
-        res.json(photoItemResponseSchema.parse({ photo: result.data }));
+        res.json(photoListResponseSchema.parse({ photos: result.data }));
     } catch (error) {
-        sendErrorResponse(res, 500, getErrorMessage(error, "Failed to retrieve photo"));
+        sendErrorResponse(res, 500, getErrorMessage(error, "Failed to retrieve photos"));
     }
 });
 
@@ -128,7 +127,7 @@ router.patch("/restore", validate(restorePhotosSchema), async (req, res) => {
     }
 });
 
-router.patch("/:id/album", validate(getPhotoByIdParamsSchema, "params"), validate(createPhotoSchema), async (req, res) => {
+router.patch("/:id/album", validate(photoIdParamsSchema, "params"), validate(createPhotoSchema), async (req, res) => {
     try {
         const userId = getAuthenticatedUserId(req)!;
 

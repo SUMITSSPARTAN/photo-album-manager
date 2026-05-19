@@ -6,7 +6,7 @@ export const createPhotoSchema = zod.object({
     albumId: zod.string().cuid("Invalid album ID"),
 }).strict();
 
-export const getPhotoByIdParamsSchema = zod.object({
+export const photoIdParamsSchema = zod.object({
     id: zod.string().cuid("Invalid photo ID"),
 }).strict();
 

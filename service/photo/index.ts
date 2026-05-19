@@ -23,8 +23,10 @@ type PhotoDto = {
   path: string;
   type: string;
   size: number;
-  encoding: string;
-  originalName: string;
+  metadata: {
+    encoding: string;
+    originalName: string;
+  };
   uploadedAt: Date;
   albumId: string;
   deletedAt: Date | null;
@@ -62,8 +64,10 @@ const toPhotoDto = (photo: {
   path: photo.path,
   type: photo.type,
   size: photo.size,
-  encoding: photo.encoding,
-  originalName: photo.originalName,
+  metadata: {
+    encoding: photo.encoding,
+    originalName: photo.originalName,
+  },
   uploadedAt: photo.uploadedAt,
   albumId: photo.albumId,
   deletedAt: photo.deletedAt,
@@ -280,6 +284,16 @@ export const getPhotoById = async (userId: string, photoId: string): Promise<Ser
   } catch (error) {
     console.error("Failed to fetch photo", error);
     return serviceError(500, "Failed to fetch photo");
+  }
+};
+
+export const getPhotosByUserId = async (userId: string): Promise<ServiceResult<PhotoDto[]>> => {
+  try {
+    const photos = await getPhotos(userId, {});
+    return { ok: true, data: photos };
+  } catch (error) {
+    console.error("Failed to fetch photos", error);
+    return serviceError(500, "Failed to fetch photos");
   }
 };
 
