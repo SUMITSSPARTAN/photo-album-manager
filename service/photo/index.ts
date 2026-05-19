@@ -112,9 +112,22 @@ export const createPhotos = async (photos: CreatePhotoInput[]): Promise<ServiceR
       return serviceError(400, "Photo files are required");
     }
 
-    const { albumId } = photos[0]!;
+    const { albumId, userId } = photos[0]!;
 
     const createdPhotos = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+      const album = await tx.album.findFirst({
+        where: {
+          id: albumId,
+          userId,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+
+      if (!album) {
+        throw serviceError(404, "Album not found");
+      }
+
       const insertedPhotos = await Promise.all(
         photos.map((photo) =>
           tx.photo.create({

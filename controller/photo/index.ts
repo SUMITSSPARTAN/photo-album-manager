@@ -1,6 +1,7 @@
 import express from "express";
 import type { Request } from "express";
-import { createPhotos, deletePhotos, getDeletedPhotosByUserId, getPhotosByAlbumId, getPhotosByUserId, movePhotoToAnotherAlbum, restorePhotos } from "../../service/photo/index.ts";
+import path from "path";
+import { createPhotos, deletePhotos, getDeletedPhotosByUserId, getPhotosByAlbumId, getPhotosByUserId, getPhotoById, movePhotoToAnotherAlbum, restorePhotos } from "../../service/photo/index.ts";
 import { getErrorMessage, sendErrorResponse, validate } from "../utils.ts";
 import { upload } from "./util.ts";
 import { albumIdParamsSchema, createPhotoSchema, deletePhotosResponseSchema, deletePhotosSchema, photoIdParamsSchema, photoItemResponseSchema, photoListResponseSchema, restorePhotosSchema } from "./photoSchema.ts";
@@ -124,6 +125,24 @@ router.patch("/restore", validate(restorePhotosSchema), async (req, res) => {
         res.json(photoListResponseSchema.parse({ photos: result.data }));
     } catch (error) {
         sendErrorResponse(res, 500, getErrorMessage(error, "Failed to restore photos"));
+    }
+});
+
+router.get("/:id/file", validate(photoIdParamsSchema, "params"), async (req, res) => {
+    try {
+        const userId = getAuthenticatedUserId(req)!;
+        const { id } = req.params as { id: string };
+
+        const result = await getPhotoById(userId, id);
+        if (!result.ok) {
+            sendErrorResponse(res, result.status, result.message);
+            return;
+        }
+
+        res.type(result.data.type);
+        res.sendFile(path.resolve(result.data.path));
+    } catch (error) {
+        sendErrorResponse(res, 500, getErrorMessage(error, "Failed to retrieve photo file"));
     }
 });
 
